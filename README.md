@@ -161,7 +161,9 @@ terraform {
 ```
  
 > Note: Bucket names must be **globally unique** across all of AWS. Change `my-terraform-state-bucket-rds-demo` to something unique to you.
- 
+
+> `key` isn't a credential — it's just the file path *inside* the S3 bucket where this project's state file will be stored.
+
 > backend.tf file in your editor
 >
 > <img src="screenshots/backend-tf-file.png" alt="backend.tf configuration" width="700">
@@ -182,5 +184,7 @@ terraform init
 ```
  
 You should see `Successfully configured the backend "s3"!` in the output. There's nothing to `plan` or `apply` yet, though — `vpc.tf`, `security-group.tf`, and `rds.tf` don't exist until Steps 3–6, and the real `init` → `plan` → `apply` workflow for the full project happens together in Step 7.
- 
+
+> <img src="screenshots/backend-tf-init.png" alt="backend.tf configuration init" width="700">
+
 ---
