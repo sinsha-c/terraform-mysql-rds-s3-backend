@@ -34,9 +34,6 @@ Before starting, make sure you have:
 - [ ] **Terraform** installed (v1.5+ recommended) — [Download here](https://developer.hashicorp.com/terraform/downloads)
 - [ ] Basic familiarity with the terminal/command line
 - [ ] An IAM user/role with permissions for: S3, DynamoDB, VPC, RDS, EC2 (security groups)
-> Screenshot placeholder: Terraform version check
->
-> `<img src="screenshots/terraform-version.png" alt="terraform -version output" width="700">`
  
 ---
  
@@ -133,17 +130,17 @@ terraform apply
 This creates:
 - An S3 bucket (versioning + encryption enabled) to store `terraform.tfstate`
 - A DynamoDB table with a primary key `LockID` (String) for state locking
-> Screenshot placeholder: S3 bucket created in the AWS Console
+> S3 bucket created in the AWS Console
 >
-> `<img src="screenshots/s3-bucket-created.png" alt="S3 bucket in AWS Console" width="800">`
+> <img src="screenshots/s3-bucket-created.png" alt="S3 bucket in AWS Console" width="800">
  
-> Screenshot placeholder: DynamoDB table created in the AWS Console
+> DynamoDB table created in the AWS Console
 >
-> `<img src="screenshots/dynamodb-table-created.png" alt="DynamoDB table in AWS Console" width="800">`
+> <img src="screenshots/dynamodb-table-created.png" alt="DynamoDB table in AWS Console" width="800">
  
-> Screenshot placeholder: Terraform apply output for backend-setup
+> Terraform apply output for backend-setup
 >
-> `<img src="screenshots/backend-setup-apply-output.png" alt="terraform apply output" width="800">`
+> <img src="screenshots/backend-setup-apply-output.png" alt="terraform apply output" width="800">
  
 ---
  
@@ -156,7 +153,7 @@ terraform {
   backend "s3" {
     bucket         = "my-terraform-state-bucket-rds-demo"
     key            = "rds/terraform.tfstate"
-    region         = "us-east-1"
+    region         = "ap-south-1"
     dynamodb_table = "terraform-locks"
     encrypt        = true
   }
@@ -165,8 +162,25 @@ terraform {
  
 > Note: Bucket names must be **globally unique** across all of AWS. Change `my-terraform-state-bucket-rds-demo` to something unique to you.
  
-> Screenshot placeholder: backend.tf file in your editor
+> backend.tf file in your editor
 >
-> `<img src="screenshots/backend-tf-file.png" alt="backend.tf configuration" width="700">`
+> <img src="screenshots/backend-tf-file.png" alt="backend.tf configuration" width="700">
+
+**One more file before moving on:** create `provider.tf` alongside it. The `region` set inside `backend "s3" {}` above only controls where the *state file* lives — it has no effect on where your actual resources (VPC, RDS, etc.) get created. Without a `provider` block, that decision falls back silently to whatever `AWS_REGION` is set, or your `~/.aws/config`, or — if you're running this from an EC2 instance with an IAM role and nothing else configured
+ 
+```hcl
+# provider.tf
+provider "aws" {
+  region = "apsouth-1"   # match this to the region you actually want your infrastructure in
+}
+```
+ 
+At this point you can optionally run `terraform init` just to confirm Terraform connects to the S3 backend successfully:
+ 
+```bash
+terraform init
+```
+ 
+You should see `Successfully configured the backend "s3"!` in the output. There's nothing to `plan` or `apply` yet, though — `vpc.tf`, `security-group.tf`, and `rds.tf` don't exist until Steps 3–6, and the real `init` → `plan` → `apply` workflow for the full project happens together in Step 7.
  
 ---
