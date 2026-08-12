@@ -28,3 +28,4 @@ resource "aws_subnet" "private_2" {
     Name = "rds-private-subnet-2"
   }
 }
+

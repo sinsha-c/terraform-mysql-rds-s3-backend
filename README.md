@@ -228,9 +228,9 @@ resource "aws_subnet" "private_2" {
 }
 ```
  
-> Screenshot placeholder: VPC and subnets visible in AWS Console
+> VPC and subnets visible in AWS Console
 >
-> `<img src="screenshots/vpc-subnets-created.png" alt="VPC and private subnets" width="800">`
+> <img src="screenshots/vpc-subnets-created.png" alt="VPC and private subnets" width="800">
  
 Don't run `terraform apply` yet — `main-infra/` isn't finished. Keep adding files through Step 6 (DB subnet group, security group, RDS instance), and Step 7 covers running `init` → `plan` → `apply` once for the whole set at once.
  
@@ -299,3 +299,203 @@ resource "aws_security_group" "rds_sg" {
 > <img src="screenshots/security-group-rules.png" alt="Security Group MySQL rule" width="800">
  
 ---
+---
+ 
+### Step 6: Provision the RDS Instance
+ 
+Finally, the main event — the MySQL RDS instance itself, using the free-tier-eligible `db.t3.micro` instance class.
+ 
+First, save this as `variables.tf` inside `main-infra/` — it declares the two inputs the RDS resource below needs, and marks them `sensitive` so Terraform never prints them in `plan`/`apply` output or logs:
+ 
+```hcl
+# variables.tf
+variable "db_username" {
+  description = "Master username for the RDS instance"
+  type        = string
+  sensitive   = true
+}
+ 
+variable "db_password" {
+  description = "Master password for the RDS instance"
+  type        = string
+  sensitive   = true
+}
+```
+ 
+Then add this to the same `rds.tf` file you started in Step 4, right after the `aws_db_subnet_group` resource:
+ 
+```hcl
+# rds.tf (continued)
+resource "aws_db_instance" "mysql" {
+  identifier             = "rds-demo-mysql"
+  engine                 = "mysql"
+  engine_version         = "8.0"
+  instance_class         = "db.t3.micro"
+  allocated_storage      = 20
+  storage_type           = "gp2"
+ 
+  db_name                = "demodb"
+  username               = var.db_username
+  password               = var.db_password
+ 
+  db_subnet_group_name   = aws_db_subnet_group.rds_subnet_group.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+ 
+  publicly_accessible    = false
+  multi_az               = false
+  skip_final_snapshot    = true
+ 
+  tags = {
+    Name = "rds-demo-mysql"
+  }
+}
+```
+ 
+> Beginner tip: Never hardcode `username`/`password` directly in `.tf` files. Use variables (`var.db_username`, `var.db_password`) marked as `sensitive = true`, or better, pull them from **AWS Secrets Manager** or environment variables.
+ 
+The actual values for `db_username`/`db_password` go in `terraform.tfvars` (also inside `main-infra/`) — this file holds real secrets, so add it to `.gitignore` and never commit it:
+ 
+```hcl
+# terraform.tfvars — do not commit this file
+db_username = "admin"
+db_password = "choose-a-strong-password-here"
+```
+ 
+Last file for this step — save this as `outputs.tf` inside `main-infra/`:
+ 
+```hcl
+# outputs.tf
+output "rds_endpoint" {
+  description = "Connection endpoint for the MySQL RDS instance"
+  value       = aws_db_instance.mysql.endpoint
+}
+```
+ 
+> RDS instance "Available" status in AWS Console
+>
+> <img src="screenshots/rds-instance-available.png" alt="RDS instance status" width="800">
+ 
+At this point, `main-infra/` should have all the files from Steps 2–6 in place: `backend.tf`, `provider.tf`, `vpc.tf`, `security-group.tf`, `rds.tf`, `variables.tf`, `outputs.tf`, and `terraform.tfvars`. Nothing has been run yet — Step 7 is where you actually execute everything together.
+ 
+---
+ 
+### Step 7: Initialize, Plan, and Apply
+ 
+Now run the standard Terraform workflow inside `main-infra/`:
+ 
+```bash
+cd main-infra
+terraform init      # Downloads providers + connects to the S3 backend
+terraform plan       # Shows what will be created
+terraform apply       # Creates everything (type 'yes' to confirm)
+```
+ 
+> `terraform init` output showing "Successfully configured the backend s3!"
+>
+> <img src="screenshots/terraform-init-output.png" alt="terraform init success" width="800">
+ 
+> `terraform plan` output summary
+>
+> <img src="screenshots/terraform-plan-output.png" alt="terraform plan output" width="800">
+ 
+> `terraform apply` completed successfully
+>
+> <img src="screenshots/terraform-apply-output.png" alt="terraform apply success" width="800">
+ 
+---
+ 
+### Step 8: Verify the RDS Endpoint Output
+ 
+Once `apply` finishes, Terraform will print the RDS endpoint in the terminal:
+ 
+```
+Outputs:
+ 
+rds_endpoint = "rds-demo-mysql.xxxxxxxxxxxxx.ap-south-1.rds.amazonaws.com:3306"
+```
+ 
+You can also retrieve it any time with:
+ 
+```bash
+terraform output rds_endpoint
+```
+ 
+> Terminal showing the RDS endpoint output
+>
+> <img src="screenshots/rds-endpoint-output.png" alt="RDS endpoint output" width="800">
+ 
+---
+ 
+## Testing the Connection
+ 
+Since the RDS instance sits in **private subnets**, you'll need a bastion host / EC2 instance inside the same VPC (or a VPN) to connect. From that instance:
+ 
+```bash
+mysql -h <rds_endpoint> -P 3306 -u <db_username> -p
+```
+ 
+> Note: This was tested by connecting from a separate EC2 instance in a different VPC via a VPC peering connection. Alternatively, you can launch another EC2 instance in a public subnet of the same VPC as the RDS instance.
+
+> Successful MySQL connection from a bastion EC2
+>
+> <img src="screenshots/mysql-connection-test.png" alt="MySQL connection test" width="800">
+ 
+---
+ 
+## Cleaning Up (Destroy Resources)
+ 
+To avoid ongoing AWS charges, destroy resources in **reverse order**:
+ 
+```bash
+# 1. Destroy the main infrastructure first
+cd main-infra
+terraform destroy
+ 
+# 2. Then destroy the backend resources (only after nothing else uses them)
+cd ../backend-setup
+terraform destroy
+```
+ 
+> Important: Never destroy the S3 bucket/DynamoDB table (`backend-setup`) while `main-infra` still references them as its backend — always tear down `main-infra` first.
+ 
+---
+ 
+## Troubleshooting
+ 
+| Issue | Likely Cause | Fix |
+|---|---|---|
+| `Error: error creating DB Instance... subnet group must span at least 2 AZs` | Only 1 subnet/AZ configured | Ensure your DB Subnet Group has subnets in 2+ AZs |
+| `Error: Failed to get existing workspaces: S3 bucket does not exist` | Backend not created before `init` | Run `backend-setup` first and confirm the bucket exists |
+| `Error acquiring the state lock` | Another `apply` is in progress, or a crashed run left a stale lock | Wait, or manually remove the lock item from the DynamoDB table if truly abandoned |
+| RDS connection times out | Security Group doesn't allow your source, or instance is in private subnet with no route | Connect from within the VPC (bastion/EC2), and verify SG inbound rule |
+| `terraform init` fails to configure backend | Wrong bucket name/region in `backend.tf` | Double check bucket name matches exactly and region is correct |
+| `terraform init` fails with `Could not retrieve the list of available versions for provider hashicorp/aws` / `could not connect to registry.terraform.io` | The machine running Terraform has no outbound internet access — common on an EC2 instance with no Internet Gateway route, no NAT Gateway (if it's in a private subnet), or a Security Group/NACL blocking outbound HTTPS (443) | Confirm the instance can reach the internet: `curl -I https://registry.terraform.io`. If it's a public subnet, check the route table has a route to an Internet Gateway and the instance has a public IP. If it's a private subnet, route outbound traffic through a NAT Gateway. Also check outbound rules on the Security Group/NACL allow port 443 |
+| Warning: `The parameter "dynamodb_table" is deprecated. Use parameter "use_lockfile" instead.` | You're on Terraform 1.10+, which added native S3 state locking and deprecated the DynamoDB-based approach | Safe to ignore for this lab — `dynamodb_table` still works, and this project uses it intentionally since DynamoDB-based locking is a stated requirement |
+ 
+---
+ 
+## Key Terraform Concepts Used
+ 
+- **Backend Configuration** (`terraform { backend "s3" {} }`) — remote state storage
+- **State Locking** — DynamoDB prevents concurrent state corruption
+- **Resource Dependencies** — Terraform automatically sequences VPC → Subnets → Subnet Group → Security Group → RDS
+- **Variables & Outputs** — parameterizing sensitive/reusable values, exposing the RDS endpoint
+- **Modules-ready structure** — this project can easily be refactored into reusable Terraform modules later
+
+---
+ 
+## Next Steps
+ 
+- Add a bastion host module to test connectivity end-to-end
+- Move `db_username`/`db_password` to **AWS Secrets Manager**
+- Add **Multi-AZ** and **automated backups** for production readiness
+- Convert this into reusable Terraform **modules** (`modules/vpc`, `modules/rds`, `modules/security-group`)
+
+---
+## Author
+
+**Sinsha C**
+
+[![GitHub](https://img.shields.io/badge/GitHub-sinsha--c-181717?style=flat&logo=github&logoColor=white)](https://github.com/sinsha-c)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-sinshac-0A66C2?style=flat&logo=linkedin&logoColor=white)](https://linkedin.com/in/sinshac)
+ 

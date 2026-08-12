@@ -1,11 +1,5 @@
-# backend-setup/main.tf
- 
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "my-terraform-state-bucket-rds-demo"   # must be globally unique — change this
- 
-  lifecycle {
-    prevent_destroy = true
-  }
  
   tags = {
     Name = "terraform-state-bucket"
