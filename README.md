@@ -188,3 +188,114 @@ You should see `Successfully configured the backend "s3"!` in the output. There'
 > <img src="screenshots/backend-tf-init.png" alt="backend.tf configuration init" width="700">
 
 ---
+
+### Step 3: Create the VPC and Private Subnets
+ 
+We create a dedicated VPC with **two private subnets** in different Availability Zones (RDS requires a minimum of 2 AZs for its subnet group, even for a single-AZ instance).
+ 
+Save this as `vpc.tf` inside `main-infra/` (alongside the `backend.tf` and `provider.tf` you created in Step 2):
+ 
+```hcl
+# vpc.tf
+resource "aws_vpc" "main" {
+  cidr_block           = "10.0.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+ 
+  tags = {
+    Name = "rds-demo-vpc"
+  }
+}
+ 
+resource "aws_subnet" "private_1" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.1.0/24"
+  availability_zone = "ap-south-1a"
+ 
+  tags = {
+    Name = "rds-private-subnet-1"
+  }
+}
+ 
+resource "aws_subnet" "private_2" {
+  vpc_id            = aws_vpc.main.id
+  cidr_block        = "10.0.2.0/24"
+  availability_zone = "ap-south-1a"
+ 
+  tags = {
+    Name = "rds-private-subnet-2"
+  }
+}
+```
+ 
+> Screenshot placeholder: VPC and subnets visible in AWS Console
+>
+> `<img src="screenshots/vpc-subnets-created.png" alt="VPC and private subnets" width="800">`
+ 
+Don't run `terraform apply` yet — `main-infra/` isn't finished. Keep adding files through Step 6 (DB subnet group, security group, RDS instance), and Step 7 covers running `init` → `plan` → `apply` once for the whole set at once.
+ 
+---
+ 
+### Step 4: Create the DB Subnet Group
+ 
+A **DB Subnet Group** tells RDS exactly which subnets it is allowed to place the database's network interfaces in.
+ 
+Save this as `rds.tf` inside `main-infra/` — this is the same file the RDS instance itself and the endpoint output will go into (Step 6 adds to it):
+ 
+```hcl
+# rds.tf
+resource "aws_db_subnet_group" "rds_subnet_group" {
+  name       = "rds-demo-subnet-group"
+  subnet_ids = [aws_subnet.private_1.id, aws_subnet.private_2.id]
+ 
+  tags = {
+    Name = "rds-demo-subnet-group"
+  }
+}
+```
+ 
+> DB Subnet Group in RDS Console
+>
+> <img src="screenshots/db-subnet-group.png" alt="DB Subnet Group" width="800">
+ 
+---
+ 
+### Step 5: Create the Security Group
+ 
+This firewall rule allows inbound traffic **only on port 3306 (MySQL)**, restricted to a specific CIDR block or an EC2 security group — never open it to `0.0.0.0/0` in a real environment.
+ 
+Save this as `security-group.tf` inside `main-infra/`:
+ 
+```hcl
+# security-group.tf
+resource "aws_security_group" "rds_sg" {
+  name        = "rds-mysql-sg"
+  description = "Allow MySQL access from trusted source"
+  vpc_id      = aws_vpc.main.id
+ 
+  ingress {
+    description = "MySQL access"
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]   # Replace with your trusted CIDR or use security_groups = [aws_security_group.ec2_sg.id]
+  }
+ 
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+ 
+  tags = {
+    Name = "rds-mysql-sg"
+  }
+}
+```
+ 
+> Security Group inbound rules
+>
+> <img src="screenshots/security-group-rules.png" alt="Security Group MySQL rule" width="800">
+ 
+---
