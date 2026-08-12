@@ -20,7 +20,7 @@ The diagram shows the two halves of this project:
 If you're new to Terraform, you might be wondering why we don't just let Terraform save its state file (`terraform.tfstate`) on our own laptop (the default behavior). Here's why a **remote backend** matters:
  
 - **Team collaboration** — Multiple people can safely work on the same infrastructure.
-- **State locking** — DynamoDB prevents two `terraform apply` runs from corrupting the state at the same time.
+- **State locking** — DynamoDB prevents two `terraform apply` runs from corrupting the state at the same time. Newer Terraform versions also support native S3 state locking.
 - **Durability** — S3 is highly durable; you won't lose your state file if your laptop dies.
 - **Security** — State files often contain sensitive data (like DB passwords); S3 lets you encrypt and restrict access.
 ---
@@ -42,9 +42,7 @@ Before starting, make sure you have:
 ```
 terraform-mysql-rds-s3-backend/
 ├── backend-setup/
-│   ├── main.tf              # Creates the S3 bucket + DynamoDB table (run ONCE, separately)
-│   ├── variables.tf
-│   └── outputs.tf
+│   └──main.tf              # Creates the S3 bucket + DynamoDB table (run ONCE, separately)
 │
 ├── main-infra/
 │   ├── backend.tf            # Points Terraform to the S3 bucket + DynamoDB table
@@ -76,9 +74,10 @@ Yes — `main.tf` is required here. It's a normal Terraform file that defines th
  
 resource "aws_s3_bucket" "terraform_state" {
   bucket = "my-terraform-state-bucket-rds-demo"   # must be globally unique — change this
- 
+  
+  # This lifecycle prevent_destroy is not required for demo, because terraform destroy will fail for the S3 bucket
   lifecycle {
-    prevent_destroy = true
+    prevent_destroy = true 
   }
  
   tags = {
@@ -173,7 +172,7 @@ terraform {
 ```hcl
 # provider.tf
 provider "aws" {
-  region = "apsouth-1"   # match this to the region you actually want your infrastructure in
+  region = "ap-south-1"   # match this to the region you actually want your infrastructure in
 }
 ```
  
@@ -220,7 +219,7 @@ resource "aws_subnet" "private_1" {
 resource "aws_subnet" "private_2" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.2.0/24"
-  availability_zone = "ap-south-1a"
+  availability_zone = "ap-south-1b"
  
   tags = {
     Name = "rds-private-subnet-2"
@@ -303,9 +302,9 @@ resource "aws_security_group" "rds_sg" {
  
 ### Step 6: Provision the RDS Instance
  
-Finally, the main event — the MySQL RDS instance itself, using the free-tier-eligible `db.t3.micro` instance class.
+Finally, the main event — using the small db.t3.micro instance class to keep this lab low-cost. Check your AWS account's current Free Tier/Free Plan eligibility before creating the instance.
  
-First, save this as `variables.tf` inside `main-infra/` — it declares the two inputs the RDS resource below needs, and marks them `sensitive` so Terraform never prints them in `plan`/`apply` output or logs:
+First, save this as `variables.tf` inside `main-infra/` — it declares the two inputs the RDS resource below needs, and marks them `sensitive` so Terraform hides them from normal Terraform CLI output.
  
 ```hcl
 # variables.tf
@@ -332,7 +331,7 @@ resource "aws_db_instance" "mysql" {
   engine_version         = "8.0"
   instance_class         = "db.t3.micro"
   allocated_storage      = 20
-  storage_type           = "gp2"
+  storage_type           = "gp3"
  
   db_name                = "demodb"
   username               = var.db_username
