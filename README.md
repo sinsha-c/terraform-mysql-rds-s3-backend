@@ -31,7 +31,7 @@ Before starting, make sure you have:
  
 - [ ] An **AWS account** with programmatic (CLI) access
 - [ ] **AWS CLI** installed and configured (`aws configure`)
-- [ ] **Terraform** installed (v1.5+ recommended) — [Download here](https://developer.hashicorp.com/terraform/downloads)
+- [ ] **Terraform** installed (v1.5+ recommended)
 - [ ] Basic familiarity with the terminal/command line
 - [ ] An IAM user/role with permissions for: S3, DynamoDB, VPC, RDS, EC2 (security groups)
  
@@ -53,7 +53,7 @@ terraform-mysql-rds-s3-backend/
 │   ├── variables.tf          # Input variables
 │   ├── outputs.tf            # RDS endpoint output
 │   └── terraform.tfvars      # Variable values (DO NOT commit passwords here in real projects)
-│
+├── .gitignore
 └── README.md
 ```
  
