@@ -457,19 +457,19 @@ terraform destroy
  
 > Important: Never destroy the S3 bucket/DynamoDB table (`backend-setup`) while `main-infra` still references them as its backend — always tear down `main-infra` first.
  
----
- 
+--- 
+
 ## Troubleshooting
- 
-| Issue | Likely Cause | Fix |
+
+| Issue | Cause | Fix |
 |---|---|---|
-| `Error: error creating DB Instance... subnet group must span at least 2 AZs` | Only 1 subnet/AZ configured | Ensure your DB Subnet Group has subnets in 2+ AZs |
-| `Error: Failed to get existing workspaces: S3 bucket does not exist` | Backend not created before `init` | Run `backend-setup` first and confirm the bucket exists |
-| `Error acquiring the state lock` | Another `apply` is in progress, or a crashed run left a stale lock | Wait, or manually remove the lock item from the DynamoDB table if truly abandoned |
-| RDS connection times out | Security Group doesn't allow your source, or instance is in private subnet with no route | Connect from within the VPC (bastion/EC2), and verify SG inbound rule |
-| `terraform init` fails to configure backend | Wrong bucket name/region in `backend.tf` | Double check bucket name matches exactly and region is correct |
-| `terraform init` fails with `Could not retrieve the list of available versions for provider hashicorp/aws` / `could not connect to registry.terraform.io` | The machine running Terraform has no outbound internet access — common on an EC2 instance with no Internet Gateway route, no NAT Gateway (if it's in a private subnet), or a Security Group/NACL blocking outbound HTTPS (443) | Confirm the instance can reach the internet: `curl -I https://registry.terraform.io`. If it's a public subnet, check the route table has a route to an Internet Gateway and the instance has a public IP. If it's a private subnet, route outbound traffic through a NAT Gateway. Also check outbound rules on the Security Group/NACL allow port 443 |
-| Warning: `The parameter "dynamodb_table" is deprecated. Use parameter "use_lockfile" instead.` | You're on Terraform 1.10+, which added native S3 state locking and deprecated the DynamoDB-based approach | Safe to ignore for this lab — `dynamodb_table` still works, and this project uses it intentionally since DynamoDB-based locking is a stated requirement |
+| RDS subnet group error | Only 1 AZ/subnet | Add subnets in 2+ AZs |
+| S3 backend bucket not found | Backend not created | Run `backend-setup` first |
+| State lock error | Another run/ stale lock | Wait or remove stale lock |
+| RDS connection timeout | SG/routing issue | Check SG and connect from VPC |
+| Backend init failure | Wrong bucket/region | Verify `backend.tf` values |
+| Terraform Registry connection failure | No outbound internet | Check routes, NAT/IGW, SG/NACL and port 443 |
+| `dynamodb_table` deprecated warning | Terraform 1.10+ | Safe to ignore; DynamoDB locking is required for this lab |
  
 ---
  
